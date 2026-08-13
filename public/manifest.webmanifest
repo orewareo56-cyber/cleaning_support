@@ -1,0 +1,16 @@
+{
+  "name": "片付けの一歩",
+  "short_name": "片付けの一歩",
+  "id": "./",
+  "description": "小さな片付けを記録して、無理なく習慣にするアプリ",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#245f4b",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
