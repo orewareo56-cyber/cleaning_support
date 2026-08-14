@@ -26,6 +26,7 @@ test("PWAマニフェストはインストールに必要な項目とPNGアイ�
     access(new URL("dist/icon-512.png", root)),
     access(new URL("dist/apple-touch-icon.png", root)),
     access(new URL("dist/sw.js", root)),
+    ...Array.from({ length: 8 }, (_, index) => access(new URL(`dist/backgrounds/room-${1903 + index}.jpg`, root))),
   ]);
 });
 

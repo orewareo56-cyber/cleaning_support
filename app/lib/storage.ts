@@ -1,5 +1,6 @@
 import type { AppData, MasterItem } from "./types";
-import { isValidBackup, migrateBackup } from "./domain";
+import { backfillBadgeAwards, isValidBackup, migrateBackup } from "./domain";
+import { DEFAULT_BACKGROUND_SETTINGS } from "./backgrounds";
 
 const DATABASE = "katazuke-no-ippo";
 const STORE = "app-state";
@@ -36,6 +37,7 @@ export function createInitialData(): AppData {
       timezone: "Asia/Tokyo",
       onboardingComplete: true,
       lastBackupAt: null,
+      ...DEFAULT_BACKGROUND_SETTINGS,
     },
   };
 }
@@ -77,6 +79,12 @@ async function writeIndexedDb(data: AppData): Promise<void> {
   });
 }
 
+function prepareRestoredData(restored: AppData, source: unknown): AppData {
+  const prepared = backfillBadgeAwards(restored);
+  if (!isValidBackup(source) || prepared !== restored) void saveData(prepared);
+  return prepared;
+}
+
 export async function loadData(): Promise<AppData> {
   // If a previous IndexedDB write failed, the localStorage copy is newer than
   // the database. Read it first until a later successful database write clears
@@ -87,8 +95,7 @@ export async function loadData(): Promise<AppData> {
       const candidate: unknown = stored ? JSON.parse(stored) : null;
       const restored = migrateBackup(candidate);
       if (restored) {
-        if (!isValidBackup(candidate)) void saveData(restored);
-        return restored;
+        return prepareRestoredData(restored, candidate);
       }
       localStorage.removeItem(FALLBACK_ACTIVE_KEY);
     }
@@ -100,8 +107,7 @@ export async function loadData(): Promise<AppData> {
       const stored = await readIndexedDb();
       const restored = migrateBackup(stored);
       if (restored) {
-        if (!isValidBackup(stored)) void saveData(restored);
-        return restored;
+        return prepareRestoredData(restored, stored);
       }
     }
   } catch {
@@ -113,8 +119,7 @@ export async function loadData(): Promise<AppData> {
       const candidate: unknown = JSON.parse(stored);
       const restored = migrateBackup(candidate);
       if (restored) {
-        if (!isValidBackup(candidate)) void saveData(restored);
-        return restored;
+        return prepareRestoredData(restored, candidate);
       }
     }
   } catch {

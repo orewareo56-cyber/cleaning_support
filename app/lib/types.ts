@@ -1,3 +1,5 @@
+import type { BackgroundId, BackgroundMode } from "./backgrounds";
+
 export type MasterItem = {
   id: string;
   name: string;
@@ -74,6 +76,9 @@ export type AppData = {
     timezone: string;
     onboardingComplete: boolean;
     lastBackupAt: string | null;
+    backgroundMode?: BackgroundMode;
+    backgroundImageId?: BackgroundId;
+    backgroundIntervalSeconds?: number;
   };
 };
 
@@ -82,4 +87,6 @@ export type BadgeDefinition = {
   name: string;
   description: string;
   icon: string;
+  category: "short" | "habit" | "special";
+  tone: "mint" | "sky" | "coral" | "gold" | "lilac";
 };

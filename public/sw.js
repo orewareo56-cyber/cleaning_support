@@ -1,4 +1,4 @@
-const CACHE = "katazuke-no-ippo-v2";
+const CACHE = "katazuke-no-ippo-v3";
 const CORE = ["./", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {

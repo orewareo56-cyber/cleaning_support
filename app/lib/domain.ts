@@ -5,20 +5,34 @@ import type {
   RecoveryGrant,
   StopwatchSession,
 } from "./types";
+import {
+  DEFAULT_BACKGROUND_SETTINGS,
+  isBackgroundId,
+  isBackgroundInterval,
+  isBackgroundMode,
+} from "./backgrounds";
 
 export const BADGES: BadgeDefinition[] = [
-  { id: "first_step", name: "はじめの一歩", description: "初めて片付けを記録", icon: "🌱" },
-  { id: "two_days", name: "もう一歩", description: "2日連続で記録", icon: "🐾" },
-  { id: "three_days", name: "小さな習慣", description: "3日連続で記録", icon: "🌿" },
-  { id: "five_days_total", name: "こつこつ5日", description: "累計5日記録", icon: "✨" },
-  { id: "seven_days", name: "一週間達成", description: "7日連続で記録", icon: "🎉" },
-  { id: "ten_days_total", name: "片付けの芽", description: "累計10日記録", icon: "🌼" },
-  { id: "three_places", name: "3か所すっきり", description: "3種類の場所で記録", icon: "🏠" },
-  { id: "five_places", name: "家の探検家", description: "5種類の場所で記録", icon: "🧭" },
-  { id: "seven_records", name: "7つの前進", description: "片付けを7件記録", icon: "📚" },
-  { id: "twenty_days_total", name: "続いている実感", description: "累計20日記録", icon: "🌳" },
-  { id: "comeback", name: "おかえりなさい", description: "7日以上空いて再開", icon: "🌈" },
-  { id: "recovery_return", name: "上手に立て直した", description: "リカバリーの翌日に記録", icon: "🛡️" },
+  { id: "first_step", name: "はじめの一歩", description: "初めて片付けを記録", icon: "🌱", category: "short", tone: "mint" },
+  { id: "two_days", name: "ふたつの足あと", description: "2日連続で記録", icon: "🐾", category: "short", tone: "sky" },
+  { id: "three_records", name: "三つのきらり", description: "片付けを3件記録", icon: "⭐", category: "short", tone: "coral" },
+  { id: "three_days", name: "小さな習慣", description: "3日連続で記録", icon: "🌿", category: "short", tone: "mint" },
+  { id: "two_places", name: "ふた部屋さんぽ", description: "2種類の場所で記録", icon: "🚪", category: "short", tone: "lilac" },
+  { id: "five_days_total", name: "こつこつ5日", description: "累計5日記録", icon: "✨", category: "short", tone: "gold" },
+  { id: "five_day_streak", name: "五日咲き", description: "5日連続で記録", icon: "🌸", category: "short", tone: "coral" },
+  { id: "seven_records", name: "7つの前進", description: "片付けを7件記録", icon: "📚", category: "short", tone: "sky" },
+  { id: "seven_days", name: "一週間達成", description: "7日連続で記録", icon: "🎉", category: "short", tone: "gold" },
+  { id: "ten_days_total", name: "片付けの芽", description: "累計10日記録", icon: "🌼", category: "habit", tone: "mint" },
+  { id: "fourteen_days", name: "二週間のリズム", description: "14日連続で記録", icon: "🗓️", category: "habit", tone: "sky" },
+  { id: "fifteen_days_total", name: "半月の足あと", description: "累計15日記録", icon: "👣", category: "habit", tone: "lilac" },
+  { id: "twenty_days_total", name: "続いている実感", description: "累計20日記録", icon: "🌳", category: "habit", tone: "coral" },
+  { id: "twenty_one_days", name: "習慣のつぼみ", description: "21日連続で記録", icon: "🌷", category: "habit", tone: "mint" },
+  { id: "thirty_days_total", name: "30日の宝箱", description: "累計30日記録", icon: "🎁", category: "habit", tone: "gold" },
+  { id: "thirty_days", name: "一か月の王冠", description: "30日連続で記録", icon: "👑", category: "habit", tone: "gold" },
+  { id: "three_places", name: "3か所すっきり", description: "3種類の場所で記録", icon: "🏠", category: "special", tone: "sky" },
+  { id: "five_places", name: "家の探検家", description: "5種類の場所で記録", icon: "🧭", category: "special", tone: "lilac" },
+  { id: "comeback", name: "虹の架け橋", description: "最初の記録から7日後にも記録", icon: "🌈", category: "special", tone: "coral" },
+  { id: "recovery_return", name: "上手に立て直した", description: "リカバリーの翌日に記録", icon: "🛡️", category: "special", tone: "mint" },
 ];
 
 const DAY_MS = 86_400_000;
@@ -67,6 +81,19 @@ function consecutiveEndingAt(dates: Set<string>, endDate: string): number {
 
 export function actualStreakEndingAt(records: CleanupRecord[], date: string): number {
   return consecutiveEndingAt(new Set(actualDates(records)), date);
+}
+
+export function longestActualStreak(records: CleanupRecord[]): number {
+  const dates = actualDates(records);
+  let best = 0;
+  let current = 0;
+  let previous: string | null = null;
+  for (const date of dates) {
+    current = previous && dayDifference(previous, date) === 1 ? current + 1 : 1;
+    best = Math.max(best, current);
+    previous = date;
+  }
+  return best;
 }
 
 export function protectedCurrentStreak(data: AppData, today: string): number {
@@ -148,22 +175,29 @@ export function formatElapsed(seconds: number): string {
 
 function badgeConditionMap(data: AppData, sourceDate: string): Record<string, boolean> {
   const dates = actualDates(data.records);
-  const actualRun = actualStreakEndingAt(data.records, sourceDate);
+  const actualRun = longestActualStreak(data.records);
   const places = new Set(data.records.map((record) => record.placeId)).size;
-  const previousDates = dates.filter((date) => date < sourceDate);
-  const lastPrevious = previousDates.at(-1);
+  const firstDate = dates.at(0);
   return {
     first_step: data.records.length >= 1,
     two_days: actualRun >= 2,
+    three_records: data.records.length >= 3,
     three_days: actualRun >= 3,
+    two_places: places >= 2,
     five_days_total: dates.length >= 5,
+    five_day_streak: actualRun >= 5,
     seven_days: actualRun >= 7,
+    seven_records: data.records.length >= 7,
     ten_days_total: dates.length >= 10,
+    fourteen_days: actualRun >= 14,
+    fifteen_days_total: dates.length >= 15,
+    twenty_days_total: dates.length >= 20,
+    twenty_one_days: actualRun >= 21,
+    thirty_days_total: dates.length >= 30,
+    thirty_days: actualRun >= 30,
     three_places: places >= 3,
     five_places: places >= 5,
-    seven_records: data.records.length >= 7,
-    twenty_days_total: dates.length >= 20,
-    comeback: Boolean(lastPrevious && dayDifference(lastPrevious, sourceDate) >= 8),
+    comeback: Boolean(firstDate && dayDifference(firstDate, sourceDate) >= 7),
     recovery_return: data.recoveryUses.some((use) => shiftDate(use.targetDate, 1) === sourceDate),
   };
 }
@@ -174,21 +208,52 @@ export function earnedBadgeIds(data: AppData, sourceDate: string): string[] {
   return BADGES.filter((badge) => checks[badge.id] && !already.has(badge.id)).map((badge) => badge.id);
 }
 
-export function badgeProgress(data: AppData, badgeId: string, today: string): { current: number; target: number } {
+export function backfillBadgeAwards(data: AppData): AppData {
+  const latestRecord = [...data.records].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt)).at(-1);
+  if (!latestRecord) return data;
+  const missing = earnedBadgeIds(data, latestRecord.localDate).filter((badgeId) =>
+    BADGES.find((badge) => badge.id === badgeId)?.category !== "special");
+  if (!missing.length) return data;
+  return {
+    ...data,
+    badgeAwards: [
+      ...data.badgeAwards,
+      ...missing.map((badgeId) => ({
+        badgeId,
+        awardedAt: latestRecord.recordedAt,
+        sourceDate: latestRecord.localDate,
+      })),
+    ],
+  };
+}
+
+export function badgeProgress(data: AppData, badgeId: string): { current: number; target: number } {
   const dates = actualDates(data.records);
-  const run = actualStreakEndingAt(data.records, dates.at(-1) ?? today);
+  const run = longestActualStreak(data.records);
   const places = new Set(data.records.map((record) => record.placeId)).size;
   switch (badgeId) {
     case "first_step": return { current: Math.min(data.records.length, 1), target: 1 };
     case "two_days": return { current: Math.min(run, 2), target: 2 };
+    case "three_records": return { current: Math.min(data.records.length, 3), target: 3 };
     case "three_days": return { current: Math.min(run, 3), target: 3 };
+    case "two_places": return { current: Math.min(places, 2), target: 2 };
     case "five_days_total": return { current: Math.min(dates.length, 5), target: 5 };
+    case "five_day_streak": return { current: Math.min(run, 5), target: 5 };
     case "seven_days": return { current: Math.min(run, 7), target: 7 };
+    case "seven_records": return { current: Math.min(data.records.length, 7), target: 7 };
     case "ten_days_total": return { current: Math.min(dates.length, 10), target: 10 };
+    case "fourteen_days": return { current: Math.min(run, 14), target: 14 };
+    case "fifteen_days_total": return { current: Math.min(dates.length, 15), target: 15 };
+    case "twenty_days_total": return { current: Math.min(dates.length, 20), target: 20 };
+    case "twenty_one_days": return { current: Math.min(run, 21), target: 21 };
+    case "thirty_days_total": return { current: Math.min(dates.length, 30), target: 30 };
+    case "thirty_days": return { current: Math.min(run, 30), target: 30 };
     case "three_places": return { current: Math.min(places, 3), target: 3 };
     case "five_places": return { current: Math.min(places, 5), target: 5 };
-    case "seven_records": return { current: Math.min(data.records.length, 7), target: 7 };
-    case "twenty_days_total": return { current: Math.min(dates.length, 20), target: 20 };
+    case "comeback": return {
+      current: dates.length ? Math.min(dayDifference(dates[0], dates.at(-1) ?? dates[0]), 7) : 0,
+      target: 7,
+    };
     default: return { current: 0, target: 1 };
   }
 }
@@ -221,6 +286,7 @@ export function migrateBackup(value: unknown): AppData | null {
         ? legacySettings.onboardingComplete
         : true,
       lastBackupAt: legacySettings.lastBackupAt ?? null,
+      ...DEFAULT_BACKGROUND_SETTINGS,
     },
   };
   return isValidBackup(migrated) ? migrated : null;
@@ -240,7 +306,11 @@ export function isValidBackup(value: unknown): value is AppData {
     || !isPlainObject(data.settings)
     || !isValidTimeZone(data.settings.timezone)
     || typeof data.settings.onboardingComplete !== "boolean"
-    || !(data.settings.lastBackupAt === null || isIsoDateTime(data.settings.lastBackupAt))) return false;
+    || !(data.settings.lastBackupAt === null || isIsoDateTime(data.settings.lastBackupAt))
+    || !(data.settings.backgroundMode === undefined || isBackgroundMode(data.settings.backgroundMode))
+    || !(data.settings.backgroundImageId === undefined || isBackgroundId(data.settings.backgroundImageId))
+    || !(data.settings.backgroundIntervalSeconds === undefined
+      || isBackgroundInterval(data.settings.backgroundIntervalSeconds))) return false;
 
   if (!isUnique(data.places, "id") || !isUnique(data.activities, "id")
     || !isUnique(data.records, "id") || !isUnique(data.stopwatchSessions, "id")

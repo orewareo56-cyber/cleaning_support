@@ -11,6 +11,7 @@ import {
 import {
   actualDates,
   BADGES,
+  backfillBadgeAwards,
   badgeProgress,
   canUseRecovery,
   dateInTimezone,
@@ -25,7 +26,12 @@ import {
   stopwatchElapsed,
   uuid,
 } from "./lib/domain";
-import { clearStoredData, createInitialData, loadData, saveData } from "./lib/storage";
+import { loadData, saveData } from "./lib/storage";
+import {
+  BACKGROUND_OPTIONS,
+  resolveBackgroundSettings,
+  type BackgroundMode,
+} from "./lib/backgrounds";
 import type { AppData, CleanupRecord, MasterItem, StopwatchSession } from "./lib/types";
 
 type View = "home" | "history" | "badges" | "manage" | "settings" | "stopwatch" | "record";
@@ -40,6 +46,50 @@ function formatJapaneseDate(localDate: string, options?: Intl.DateTimeFormatOpti
 
 function activeStopwatch(data: AppData | null): StopwatchSession | null {
   return data?.stopwatchSessions.find((session) => ["running", "paused", "stopped"].includes(session.status)) ?? null;
+}
+
+function backgroundAssetUrl(fileName: string): string {
+  return `${import.meta.env.BASE_URL}backgrounds/${fileName}`;
+}
+
+function BackgroundBackdrop({ settings }: { settings: AppData["settings"] }) {
+  const background = resolveBackgroundSettings(settings);
+  const selectedIndex = Math.max(0, BACKGROUND_OPTIONS.findIndex((option) => option.id === background.backgroundImageId));
+  const [slideIndex, setSlideIndex] = useState(selectedIndex);
+
+  useEffect(() => {
+    if (background.backgroundMode !== "slideshow") return undefined;
+    const timer = window.setInterval(() => {
+      setSlideIndex((current) => (current + 1) % BACKGROUND_OPTIONS.length);
+    }, background.backgroundIntervalSeconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [background.backgroundIntervalSeconds, background.backgroundMode]);
+
+  const activeOption = background.backgroundMode === "fixed"
+    ? BACKGROUND_OPTIONS[selectedIndex]
+    : BACKGROUND_OPTIONS[slideIndex];
+
+  useEffect(() => {
+    if (background.backgroundMode === "none") return;
+    const nextIndex = background.backgroundMode === "slideshow"
+      ? (slideIndex + 1) % BACKGROUND_OPTIONS.length
+      : selectedIndex;
+    const preload = new Image();
+    preload.src = backgroundAssetUrl(BACKGROUND_OPTIONS[nextIndex].fileName);
+  }, [background.backgroundMode, selectedIndex, slideIndex]);
+
+  if (background.backgroundMode === "none") return null;
+
+  return (
+    <div className="app-background" aria-hidden="true">
+      <div
+        key={activeOption.id}
+        className="app-background-image"
+        data-background-id={activeOption.id}
+        style={{ backgroundImage: `url(${backgroundAssetUrl(activeOption.fileName)})` }}
+      />
+    </div>
+  );
 }
 
 export function CleanupApp() {
@@ -98,6 +148,7 @@ export function CleanupApp() {
   }
 
   const appData = data;
+  const backgroundSettings = resolveBackgroundSettings(appData.settings);
   const session = activeStopwatch(appData);
   const todayRecords = appData.records.filter((record) => record.localDate === today);
 
@@ -223,17 +274,22 @@ export function CleanupApp() {
   ) : view === "history" ? (
     <HistoryView data={data} today={today} month={calendarMonth} setMonth={setCalendarMonth} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onEdit={openRecord} onDelete={deleteRecord} onRecovery={useRecovery} />
   ) : view === "badges" ? (
-    <BadgesView data={data} today={today} />
+    <BadgesView data={data} />
   ) : view === "manage" ? (
     <ManageView data={data} kind={masterKind} setKind={setMasterKind} commit={commit} announce={announce} />
   ) : view === "settings" ? (
-    <SettingsView data={data} commit={commit} announce={announce} onReset={() => setData(createInitialData())} onManage={() => navigate("manage")} />
+    <SettingsView data={data} commit={commit} announce={announce} onManage={() => navigate("manage")} />
   ) : (
     <HomeView data={data} today={today} onStart={startStopwatch} onRecord={() => openRecord()} onHistory={() => navigate("history")} onRecovery={useRecovery} />
   );
 
   return (
-    <div className="app-shell">
+    <>
+      <BackgroundBackdrop
+        key={`${backgroundSettings.backgroundMode}-${backgroundSettings.backgroundImageId}`}
+        settings={appData.settings}
+      />
+      <div className={backgroundSettings.backgroundMode === "none" ? "app-shell" : "app-shell has-background"}>
       <header className="topbar">
         <button className="brand" onClick={() => navigate("home")} aria-label="ホームへ">
           <span aria-hidden="true">○</span> 片付けの一歩
@@ -250,7 +306,8 @@ export function CleanupApp() {
       )}
       <div className="sr-live" role="status" aria-live="polite">{notice}</div>
       {notice && <div className="toast" aria-hidden="true">{notice}</div>}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -307,8 +364,8 @@ function HomeView({ data, today, onStart, onRecord, onHistory, onRecovery }: {
       </section>
 
       {nextBadges.length > 0 && <section className="badge-preview"><p className="eyebrow">次の楽しみ</p><h2>もう少しで届くバッジ</h2>{nextBadges.map((badge) => {
-        const progress = badgeProgress(data, badge.id, today);
-        return <div className="progress-item" key={badge.id}><span className="badge-icon">{badge.icon}</span><div><strong>{badge.name}</strong><small>{badge.description}</small><progress max={progress.target} value={progress.current}>{progress.current}/{progress.target}</progress></div><b>{progress.current}/{progress.target}</b></div>;
+        const progress = badgeProgress(data, badge.id);
+        return <div className="progress-item" key={badge.id}><span className={`badge-icon tone-${badge.tone}`}>{badge.icon}</span><div><strong>{badge.name}</strong><small>{badge.description}</small><progress max={progress.target} value={progress.current}>{progress.current}/{progress.target}</progress></div><b>{progress.current}/{progress.target}</b></div>;
       })}</section>}
     </main>
   );
@@ -456,9 +513,65 @@ function HistoryView({ data, today, month, setMonth, selectedDate, setSelectedDa
   </main>;
 }
 
-function BadgesView({ data, today }: { data: AppData; today: string }) {
+function BadgesView({ data }: { data: AppData }) {
   const awards = new Map(data.badgeAwards.map((award) => [award.badgeId, award]));
-  return <main className="screen"><p className="eyebrow">つみかさねの証</p><h1>あなたのバッジ</h1><p className="lead">大きさや時間ではなく、一歩を重ねたことを称えます。</p><div className="badge-grid">{BADGES.map((badge) => { const award = awards.get(badge.id); const progress = badgeProgress(data, badge.id, today); return <article className={award ? "badge-card earned" : "badge-card"} key={badge.id}><span className="badge-medallion" aria-hidden="true">{badge.icon}</span><div><h2>{badge.name}</h2><p>{badge.description}</p>{award ? <small>{formatJapaneseDate(award.sourceDate ?? award.awardedAt.slice(0,10))}に獲得</small> : <><progress max={progress.target} value={progress.current} /><small>{progress.current} / {progress.target}</small></>}</div></article>; })}</div></main>;
+  const earnedCount = awards.size;
+  const groups = [
+    { id: "short", title: "まずは一歩", description: "今日から1週間の小さな達成" },
+    { id: "habit", title: "習慣を育てる", description: "10日から30日までの節目" },
+    { id: "special", title: "暮らしの冒険", description: "場所の広がりと、続ける工夫" },
+  ] as const;
+
+  return (
+    <main className="screen badges-screen">
+      <p className="eyebrow">つみかさねの証</p>
+      <h1>あなたのバッジ</h1>
+      <p className="lead">大きさや時間ではなく、一歩を重ねたことを称えます。</p>
+
+      <section className="badge-overview" aria-label={`${BADGES.length}個中${earnedCount}個のバッジを獲得`}>
+        <div className="badge-total"><strong>{earnedCount}</strong><span>/ {BADGES.length}</span></div>
+        <div><strong>{earnedCount ? "集まってきました" : "ここから始まります"}</strong><progress max={BADGES.length} value={earnedCount}>{earnedCount}/{BADGES.length}</progress><small>「獲得済み」のバッジが集めた証です</small></div>
+      </section>
+
+      {groups.map((group) => {
+        const badges = BADGES.filter((badge) => badge.category === group.id);
+        const groupEarned = badges.filter((badge) => awards.has(badge.id)).length;
+        return (
+          <section className="badge-section" key={group.id} aria-labelledby={`badge-group-${group.id}`}>
+            <div className="badge-section-heading">
+              <div><p className="eyebrow">{group.description}</p><h2 id={`badge-group-${group.id}`}>{group.title}</h2></div>
+              <span>{groupEarned} / {badges.length}</span>
+            </div>
+            <div className="badge-grid">
+              {badges.map((badge) => {
+                const award = awards.get(badge.id);
+                const progress = badgeProgress(data, badge.id);
+                const remaining = Math.max(0, progress.target - progress.current);
+                return (
+                  <article className={`badge-card tone-${badge.tone}${award ? " earned" : ""}`} key={badge.id}>
+                    <span className="badge-medallion" aria-hidden="true"><i>{badge.icon}</i></span>
+                    <span className="badge-status">{award ? "獲得済み" : "未獲得"}</span>
+                    <h3>{badge.name}</h3>
+                    <p>{badge.description}</p>
+                    {award ? (
+                      <small className="badge-earned-date">{formatJapaneseDate(award.sourceDate ?? award.awardedAt.slice(0,10))}</small>
+                    ) : badge.category === "special" ? (
+                      <small className="badge-special-hint">特別チャレンジ</small>
+                    ) : (
+                      <div className="badge-progress">
+                        <progress aria-label={`${badge.name}の進捗`} max={progress.target} value={progress.current} />
+                        <small>{remaining > 0 ? `あと${remaining}` : "達成済み"} · {progress.current}/{progress.target}</small>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </main>
+  );
 }
 
 function ManageView({ data, kind, setKind, commit, announce }: { data: AppData; kind: "places" | "activities"; setKind: (kind: "places" | "activities") => void; commit: (data: AppData, message?: string) => void; announce: (message: string) => void }) {
@@ -471,10 +584,126 @@ function ManageView({ data, kind, setKind, commit, announce }: { data: AppData; 
   return <main className="screen"><p className="eyebrow">自分の暮らしに合わせる</p><h1>場所と内容</h1><div className="segmented" aria-label="管理する項目"><button aria-pressed={kind === "places"} className={kind === "places" ? "active" : ""} onClick={() => setKind("places")}>場所</button><button aria-pressed={kind === "activities"} className={kind === "activities" ? "active" : ""} onClick={() => setKind("activities")}>片付けた内容</button></div><div className="add-row"><label htmlFor="master-name" className="sr-only">新しい{kind === "places" ? "場所" : "内容"}</label><input id="master-name" maxLength={40} value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={`新しい${kind === "places" ? "場所" : "内容"}`} onKeyDown={(event) => { if (event.key === "Enter") add(); }} /><button className="primary-button" onClick={add} disabled={!newName.trim()}>追加</button></div><div className="master-list">{items.map((item) => <article className={item.isArchived ? "master-item archived" : "master-item"} key={item.id}><span>{item.name}{item.isArchived && <small>アーカイブ中</small>}</span><div><button aria-label={`${item.name}を上へ`} onClick={() => move(item,-1)}>↑</button><button aria-label={`${item.name}を下へ`} onClick={() => move(item,1)}>↓</button><button onClick={() => rename(item)}>編集</button><button onClick={() => archive(item)}>{item.isArchived ? "戻す" : "休止"}</button></div></article>)}</div></main>;
 }
 
-function SettingsView({ data, commit, announce, onReset, onManage }: { data: AppData; commit: (data: AppData, message?: string) => void; announce: (message: string) => void; onReset: () => void; onManage: () => void }) {
-  const [confirmText, setConfirmText] = useState("");
-  function exportData() { const now = new Date().toISOString(); const next = { ...data, settings: { ...data.settings, lastBackupAt: now } }; commit(next); const blob = new Blob([JSON.stringify(next, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `katazuke-backup-${dateInTimezone(new Date(), data.settings.timezone)}.json`; link.click(); URL.revokeObjectURL(url); announce("バックアップを書き出しました"); }
-  async function importData(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > 5_000_000) throw new Error("too-large"); const candidate: unknown = JSON.parse(await file.text()); const restored = migrateBackup(candidate); if (!restored) throw new Error("invalid"); if (!window.confirm("現在のデータを、読み込むバックアップで全て置き換えますか？")) return; await saveData(restored); commit(restored, "バックアップを復元しました"); } catch { announce("このファイルは読み込めません。現在のデータは変更されていません。"); } }
-  async function reset() { if (confirmText !== "全て削除") return; await clearStoredData(); const fresh = createInitialData(); await saveData(fresh); onReset(); setConfirmText(""); announce("この端末の記録を全て削除しました"); }
-  return <main className="screen"><p className="eyebrow">自分に合う使い方へ</p><h1>設定</h1><section className="settings-card"><h2>場所と片付けた内容</h2><p>記録するときに選ぶ項目を追加・編集・休止できます。</p><button className="secondary-button settings-link" onClick={onManage}>場所と内容を管理する <span aria-hidden="true">→</span></button></section><section className="settings-card"><h2>バックアップ</h2><p>記録はこの端末内に保存されます。定期的にファイルを保存しておくと安心です。</p>{data.settings.lastBackupAt && <small>最終書き出し：{new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.settings.lastBackupAt))}</small>}<button className="primary-button" onClick={exportData}>JSONを書き出す</button><label className="file-button">JSONから復元<input type="file" accept="application/json,.json" onChange={importData} /></label></section><section className="settings-card"><h2>利用中のタイムゾーン</h2><p><strong>{data.settings.timezone}</strong></p><small>日付は記録した時点で確定し、後から変わりません。</small></section><section className="settings-card danger-zone"><h2>全データ削除</h2><p>復元できません。先にバックアップをお勧めします。</p><label htmlFor="delete-confirm">「全て削除」と入力<input id="delete-confirm" autoComplete="off" value={confirmText} onChange={(event) => setConfirmText(event.target.value)} /></label><button className="danger-button" disabled={confirmText !== "全て削除"} onClick={reset}>この端末のデータを削除</button></section><p className="app-note">片付けの一歩 v0.1.0 · データは端末内に保存</p></main>;
+function SettingsView({ data, commit, announce, onManage }: { data: AppData; commit: (data: AppData, message?: string) => void; announce: (message: string) => void; onManage: () => void }) {
+  const background = resolveBackgroundSettings(data.settings);
+
+  function updateBackground(settings: Partial<AppData["settings"]>) {
+    commit({ ...data, settings: { ...data.settings, ...settings } });
+  }
+
+  function setBackgroundMode(backgroundMode: BackgroundMode) {
+    updateBackground({ backgroundMode });
+  }
+
+  function exportData() {
+    const now = new Date().toISOString();
+    const next = { ...data, settings: { ...data.settings, lastBackupAt: now } };
+    commit(next);
+    const blob = new Blob([JSON.stringify(next, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `katazuke-backup-${dateInTimezone(new Date(), data.settings.timezone)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    announce("バックアップを書き出しました");
+  }
+
+  async function importData(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      if (file.size > 5_000_000) throw new Error("too-large");
+      const candidate: unknown = JSON.parse(await file.text());
+      const restored = migrateBackup(candidate);
+      if (!restored) throw new Error("invalid");
+      if (!window.confirm("現在のデータを、読み込むバックアップで全て置き換えますか？")) return;
+      const prepared = backfillBadgeAwards(restored);
+      await saveData(prepared);
+      commit(prepared, "バックアップを復元しました");
+    } catch {
+      announce("このファイルは読み込めません。現在のデータは変更されていません。");
+    }
+  }
+
+  return (
+    <main className="screen">
+      <p className="eyebrow">自分に合う使い方へ</p>
+      <h1>設定</h1>
+      <section className="settings-card background-settings-card">
+        <h2>背景</h2>
+        <p>綺麗になった部屋を思い描いて頑張りましょう！</p>
+        <div className="background-mode-picker" aria-label="背景の表示方法">
+          {([
+            ["none", "なし"],
+            ["fixed", "1枚固定"],
+            ["slideshow", "自動切替"],
+          ] as const).map(([mode, label]) => (
+            <button
+              type="button"
+              key={mode}
+              className={background.backgroundMode === mode ? "active" : ""}
+              aria-pressed={background.backgroundMode === mode}
+              onClick={() => setBackgroundMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="background-setting-heading">
+          <strong>{background.backgroundMode === "slideshow" ? "最初に表示する部屋" : "表示する部屋"}</strong>
+          <small>{background.backgroundMode === "none" ? "選択内容は次回の表示用に保存されます" : "タップするとすぐに反映されます"}</small>
+        </div>
+        <div className="background-picker" aria-label="背景画像を選択">
+          {BACKGROUND_OPTIONS.map((option) => (
+            <button
+              type="button"
+              key={option.id}
+              className={background.backgroundImageId === option.id ? "background-option selected" : "background-option"}
+              aria-pressed={background.backgroundImageId === option.id}
+              onClick={() => updateBackground({ backgroundImageId: option.id })}
+            >
+              <img src={backgroundAssetUrl(option.fileName)} alt="" loading="lazy" />
+              <span>{option.label}</span>
+              {background.backgroundImageId === option.id && <b aria-hidden="true">✓</b>}
+            </button>
+          ))}
+        </div>
+
+        {background.backgroundMode === "slideshow" && (
+          <div className="background-interval">
+            <div><label htmlFor="background-interval">切替間隔</label><b>{background.backgroundIntervalSeconds}秒</b></div>
+            <input
+              id="background-interval"
+              type="range"
+              min="5"
+              max="10"
+              step="1"
+              value={background.backgroundIntervalSeconds}
+              aria-valuetext={`${background.backgroundIntervalSeconds}秒`}
+              onChange={(event) => updateBackground({ backgroundIntervalSeconds: Number(event.target.value) })}
+            />
+            <small><span>5秒</span><span>10秒</span></small>
+          </div>
+        )}
+        <p className="background-note">背景は画面に固定され、アプリの内容だけがその上をスクロールします。</p>
+      </section>
+
+      <section className="settings-card">
+        <h2>場所と片付けた内容</h2>
+        <p>記録するときに選ぶ項目を追加・編集・休止できます。</p>
+        <button className="secondary-button settings-link" onClick={onManage}>場所と内容を管理する <span aria-hidden="true">→</span></button>
+      </section>
+      <section className="settings-card">
+        <h2>バックアップ</h2>
+        <p>記録はこの端末内に保存されます。定期的にファイルを保存しておくと安心です。</p>
+        {data.settings.lastBackupAt && <small>最終書き出し：{new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.settings.lastBackupAt))}</small>}
+        <button className="primary-button" onClick={exportData}>JSONを書き出す</button>
+        <label className="file-button">JSONから復元<input type="file" accept="application/json,.json" onChange={importData} /></label>
+      </section>
+      <p className="app-note">片付けの一歩 v0.1.0 · データは端末内に保存</p>
+    </main>
+  );
 }

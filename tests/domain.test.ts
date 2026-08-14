@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   actualStreakEndingAt,
+  BADGES,
+  backfillBadgeAwards,
+  badgeProgress,
   canUseRecovery,
   dateInTimezone,
   earnedBadgeIds,
   grantForNewRecord,
   isValidBackup,
   migrateBackup,
+  longestActualStreak,
   longestProtectedStreak,
   protectedCurrentStreak,
   recoveryBalance,
@@ -15,6 +19,10 @@ import {
 } from "../app/lib/domain";
 import { createInitialData } from "../app/lib/storage";
 import type { AppData, CleanupRecord, StopwatchSession } from "../app/lib/types";
+import {
+  DEFAULT_BACKGROUND_SETTINGS,
+  resolveBackgroundSettings,
+} from "../app/lib/backgrounds";
 
 const NOW = "2026-08-13T03:00:00.000Z";
 const GRANT_AT = "2026-08-07T03:00:00.000Z";
@@ -124,9 +132,15 @@ test("主要バッジは境界到達時に一度だけ候補になる", () => {
   const data = dataWithDates(dates);
   data.records = data.records.map((item, index) => ({ ...item, placeId: `place-${index % 5}` }));
   const earned = earnedBadgeIds(data, "2026-07-20");
-  for (const id of ["first_step", "two_days", "three_days", "five_days_total", "seven_days", "ten_days_total", "three_places", "five_places", "seven_records", "twenty_days_total"]) {
+  for (const id of [
+    "first_step", "two_days", "three_records", "three_days", "two_places",
+    "five_days_total", "five_day_streak", "seven_days", "seven_records",
+    "ten_days_total", "fourteen_days", "fifteen_days_total",
+    "three_places", "five_places", "twenty_days_total",
+  ]) {
     assert.ok(earned.includes(id), `${id}を獲得候補に含む`);
   }
+  assert.ok(!earned.includes("twenty_one_days"));
   data.badgeAwards.push({ badgeId: "first_step", awardedAt: NOW, sourceDate: "2026-07-01" });
   assert.ok(!earnedBadgeIds(data, "2026-07-20").includes("first_step"));
 });
@@ -135,14 +149,40 @@ test("同日7件は件数バッジだけを進め、日数バッジを獲得し�
   const data = dataWithDates([]);
   data.records = Array.from({ length: 7 }, (_, index) => record("2026-08-13", index));
   const earned = earnedBadgeIds(data, "2026-08-13");
+  assert.ok(earned.includes("three_records"));
   assert.ok(earned.includes("seven_records"));
   assert.ok(!earned.includes("two_days"));
+  assert.ok(!earned.includes("five_day_streak"));
   assert.ok(!earned.includes("seven_days"));
 });
 
-test("comebackは7空白日後、recovery_returnは保護日の翌日の実記録で獲得", () => {
-  const comeback = dataWithDates(["2026-08-01", "2026-08-09"]);
-  assert.ok(earnedBadgeIds(comeback, "2026-08-09").includes("comeback"));
+test("習慣化バッジは最長30日までを段階的に評価する", () => {
+  const dates = Array.from({ length: 30 }, (_, index) => `2026-01-${String(index + 1).padStart(2, "0")}`);
+  const data = dataWithDates(dates);
+  assert.equal(longestActualStreak(data.records), 30);
+  const earned = earnedBadgeIds(data, "2026-01-30");
+  for (const id of ["fourteen_days", "twenty_one_days", "thirty_days_total", "thirty_days"]) {
+    assert.ok(earned.includes(id), `${id}を獲得候補に含む`);
+  }
+  for (const badge of BADGES) {
+    assert.ok(badgeProgress(data, badge.id).target <= 30, `${badge.id}の目標は30以下`);
+  }
+});
+
+test("追加バッジは既存記録から安全に補完され、特別バッジは推測で付与しない", () => {
+  const dates = Array.from({ length: 30 }, (_, index) => `2026-01-${String(index + 1).padStart(2, "0")}`);
+  const data = dataWithDates(dates);
+  const prepared = backfillBadgeAwards(data);
+  assert.ok(prepared.badgeAwards.some((award) => award.badgeId === "thirty_days"));
+  assert.ok(!prepared.badgeAwards.some((award) => award.badgeId === "comeback"));
+  assert.equal(isValidBackup(prepared), true);
+  assert.equal(backfillBadgeAwards(prepared), prepared, "2回目は同じデータを返す");
+});
+
+test("虹の架け橋は最初の記録から7日後、recovery_returnは保護日の翌日の実記録で獲得", () => {
+  const rainbow = dataWithDates(["2026-08-01", "2026-08-08"]);
+  assert.ok(earnedBadgeIds(rainbow, "2026-08-08").includes("comeback"));
+  assert.deepEqual(badgeProgress(rainbow, "comeback"), { current: 7, target: 7 });
   const recovery = dataWithDates(["2026-08-09"]);
   recovery.recoveryUses.push({ id: "use-1", targetDate: "2026-08-08", usedAt: NOW });
   assert.ok(earnedBadgeIds(recovery, "2026-08-09").includes("recovery_return"));
@@ -166,6 +206,31 @@ test("停止/記録/破棄状態は保存秒を固定し、不正・逆行時刻
 test("完全な初期データは有効なバックアップとして往復できる", () => {
   const restored: unknown = JSON.parse(JSON.stringify(createInitialData()));
   assert.equal(isValidBackup(restored), true);
+});
+
+test("背景設定は旧データの省略を許容し、既定値と5〜10秒の範囲を検証する", () => {
+  const legacyShape = structuredClone(createInitialData());
+  delete legacyShape.settings.backgroundMode;
+  delete legacyShape.settings.backgroundImageId;
+  delete legacyShape.settings.backgroundIntervalSeconds;
+  assert.equal(isValidBackup(legacyShape), true);
+  assert.deepEqual(resolveBackgroundSettings(legacyShape.settings), DEFAULT_BACKGROUND_SETTINGS);
+
+  const valid = createInitialData();
+  valid.settings.backgroundMode = "slideshow";
+  valid.settings.backgroundImageId = "room-1910";
+  valid.settings.backgroundIntervalSeconds = 5;
+  assert.equal(isValidBackup(valid), true);
+
+  for (const settings of [
+    { ...valid.settings, backgroundMode: "random" },
+    { ...valid.settings, backgroundImageId: "unknown-room" },
+    { ...valid.settings, backgroundIntervalSeconds: 4 },
+    { ...valid.settings, backgroundIntervalSeconds: 11 },
+    { ...valid.settings, backgroundIntervalSeconds: 7.5 },
+  ]) {
+    assert.equal(isValidBackup({ ...valid, settings }), false);
+  }
 });
 
 test("バックアップ検証は壊れたネスト値・日付・状態・一意性違反を拒否する", () => {
