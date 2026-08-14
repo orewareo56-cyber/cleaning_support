@@ -39,6 +39,7 @@ type RecordDraft = { placeId: string; activityId: string; memo: string; sessionI
 
 const emptyDraft: RecordDraft = { placeId: "", activityId: "", memo: "", sessionId: null, editingId: null };
 const HOME_BACKGROUND_FADE_MS = 3000;
+const BADGE_CELEBRATION_MS = 3200;
 
 function formatJapaneseDate(localDate: string, options?: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("ja-JP", options ?? { month: "long", day: "numeric", weekday: "short" })
@@ -102,8 +103,10 @@ export function CleanupApp() {
   const [calendarMonth, setCalendarMonth] = useState(() => dateInTimezone().slice(0, 7));
   const [masterKind, setMasterKind] = useState<"places" | "activities">("places");
   const [revealingHomeBackground, setRevealingHomeBackground] = useState(false);
+  const [badgeCelebrations, setBadgeCelebrations] = useState<string[]>([]);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundRevealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badgeCelebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundRevealActive = useRef(false);
 
   const announce = useCallback((message: string) => {
@@ -115,7 +118,7 @@ export function CleanupApp() {
   const showHomeBackground = useCallback((settings: AppData["settings"]) => {
     if (document.visibilityState === "hidden") return;
     const background = resolveBackgroundSettings(settings);
-    if (background.backgroundMode === "none") return;
+    if (background.backgroundMode === "none" || !background.homeBackgroundFadeEnabled) return;
     if (backgroundRevealActive.current) return;
     backgroundRevealActive.current = true;
     setRevealingHomeBackground(true);
@@ -124,6 +127,16 @@ export function CleanupApp() {
       setRevealingHomeBackground(false);
       backgroundRevealTimer.current = null;
     }, HOME_BACKGROUND_FADE_MS);
+  }, []);
+
+  const celebrateBadges = useCallback((badgeIds: string[]) => {
+    if (!badgeIds.length) return;
+    if (badgeCelebrationTimer.current) clearTimeout(badgeCelebrationTimer.current);
+    setBadgeCelebrations(badgeIds);
+    badgeCelebrationTimer.current = setTimeout(() => {
+      setBadgeCelebrations([]);
+      badgeCelebrationTimer.current = null;
+    }, BADGE_CELEBRATION_MS);
   }, []);
 
   useEffect(() => {
@@ -142,6 +155,7 @@ export function CleanupApp() {
       mounted = false;
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
       if (backgroundRevealTimer.current) clearTimeout(backgroundRevealTimer.current);
+      if (badgeCelebrationTimer.current) clearTimeout(badgeCelebrationTimer.current);
     };
   }, [showHomeBackground]);
 
@@ -273,7 +287,7 @@ export function CleanupApp() {
       };
     }
     commit(next, grant ? "7日間の前進でリカバリー権を1つ獲得しました！" : "今日の一歩を記録しました");
-    if (earned.length) setTimeout(() => announce(`バッジ「${BADGES.find((badge) => badge.id === earned[0])?.name}」を獲得しました！`), 300);
+    celebrateBadges(earned);
     navigate("home");
     setDraft(emptyDraft);
   }
@@ -323,6 +337,10 @@ export function CleanupApp() {
   ) : (
     <HomeView data={data} today={today} onStart={startStopwatch} onRecord={() => openRecord()} onHistory={() => navigate("history")} onRecovery={useRecovery} />
   );
+  const celebratedBadges = badgeCelebrations.flatMap((badgeId) => {
+    const badge = BADGES.find((item) => item.id === badgeId);
+    return badge ? [badge] : [];
+  });
 
   return (
     <>
@@ -352,6 +370,24 @@ export function CleanupApp() {
       <div className="sr-live" role="status" aria-live="polite">{notice}</div>
       {notice && <div className="toast" aria-hidden="true">{notice}</div>}
       </div>
+      {celebratedBadges.length > 0 && (
+        <div className="badge-celebration" role="status" aria-live="assertive">
+          <div className="badge-celebration-card">
+            <p className="eyebrow">新しいバッジを獲得！</p>
+            <div className="badge-celebration-medals" aria-hidden="true">
+              {celebratedBadges.map((badge) => (
+                <span className={`badge-medallion celebration-medal tone-${badge.tone}`} key={badge.id}>
+                  <i>{badge.icon}</i>
+                </span>
+              ))}
+            </div>
+            <strong>{celebratedBadges.length === 1 ? celebratedBadges[0].name : `${celebratedBadges.length}個のバッジ`}</strong>
+            <p>{celebratedBadges.length === 1
+              ? celebratedBadges[0].description
+              : celebratedBadges.map((badge) => badge.name).join("・")}</p>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -695,6 +731,23 @@ function SettingsView({ data, commit, announce, onManage }: { data: AppData; com
               {label}
             </button>
           ))}
+        </div>
+
+        <div className="background-fade-setting">
+          <div>
+            <strong>ホームのフェードイン</strong>
+            <small>ホームを開くたび、背景からゆっくり画面を表示します</small>
+          </div>
+          <button
+            type="button"
+            className={background.homeBackgroundFadeEnabled ? "toggle-switch active" : "toggle-switch"}
+            role="switch"
+            aria-checked={background.homeBackgroundFadeEnabled}
+            aria-label="ホームのフェードイン"
+            onClick={() => updateBackground({ homeBackgroundFadeEnabled: !background.homeBackgroundFadeEnabled })}
+          >
+            <span aria-hidden="true" />
+          </button>
         </div>
 
         <div className="background-setting-heading">

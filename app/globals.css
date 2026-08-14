@@ -198,6 +198,14 @@ textarea { resize: vertical; }
 .background-mode-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 14px; background: rgb(33 49 44 / 8%); }
 .background-mode-picker button { min-height: 44px; padding: 7px 5px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 750; cursor: pointer; }
 .background-mode-picker button.active { background: var(--surface); color: var(--green); box-shadow: 0 2px 9px rgb(33 49 44 / 10%); }
+.background-fade-setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding: 13px 14px; border-radius: 14px; background: color-mix(in srgb, var(--green-soft) 62%, white); }
+.background-fade-setting > div { min-width: 0; }
+.background-fade-setting strong, .background-fade-setting small { display: block; }
+.background-fade-setting small { margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.toggle-switch { position: relative; width: 50px; height: 30px; flex: 0 0 50px; padding: 0; border: 0; border-radius: 999px; background: #b9c0bc; cursor: pointer; transition: background-color .2s ease; }
+.toggle-switch > span { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: white; box-shadow: 0 2px 6px rgb(20 30 26 / 22%); transition: transform .2s ease; }
+.toggle-switch.active { background: var(--green); }
+.toggle-switch.active > span { transform: translateX(20px); }
 .background-setting-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin: 20px 1px 10px; }
 .background-setting-heading small { color: var(--muted); font-size: 10px; text-align: right; }
 .background-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -215,6 +223,15 @@ textarea { resize: vertical; }
 .background-note { margin: 14px 2px 0; color: var(--muted); font-size: 12px; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .app-note { color: var(--muted); font-size: 12px; text-align: center; }
+
+.badge-celebration { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 24px; pointer-events: none; }
+.badge-celebration-card { width: min(100%, 360px); padding: 27px 24px 23px; border: 1px solid #e1d3a9; border-radius: 26px; background: rgb(255 254 249 / 96%); box-shadow: 0 24px 75px rgb(20 30 26 / 28%); text-align: center; }
+.badge-celebration-card .eyebrow { margin-bottom: 4px; color: #9a7024; }
+.badge-celebration-medals { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 18px 0 20px; }
+.celebration-medal { z-index: 0; width: 78px; height: 78px; flex-basis: 78px; margin: 0; isolation: isolate; }
+.celebration-medal i { font-size: 34px; }
+.badge-celebration-card > strong { display: block; font-family: Georgia, "Yu Mincho", serif; font-size: 23px; line-height: 1.35; }
+.badge-celebration-card > p:last-child { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 
 .bottom-nav { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, 1fr); width: min(100%, 720px); min-height: calc(67px + env(safe-area-inset-bottom)); margin: auto; padding: 5px 8px env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); }
 .nav-button { display: grid; min-height: 52px; place-items: center; align-content: center; gap: 1px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); cursor: pointer; }
@@ -262,8 +279,22 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: no-preference) {
   .app-background-image { animation: background-fade .8s ease-out; }
   .toast { animation: toast-in .28s ease-out; }
+  .badge-celebration-card { animation: badge-celebration-card 3200ms ease both; }
+  .celebration-medal { animation: celebration-medal-pop .72s cubic-bezier(.18, .89, .32, 1.28) both; }
+  .celebration-medal:nth-child(2) { animation-delay: .08s; }
+  .celebration-medal:nth-child(3) { animation-delay: .16s; }
   @keyframes background-fade { from { opacity: 0; } }
   @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } }
+  @keyframes badge-celebration-card {
+    0% { opacity: 0; transform: translateY(18px) scale(.92); }
+    12%, 82% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-10px) scale(1.01); }
+  }
+  @keyframes celebration-medal-pop {
+    0% { opacity: 0; transform: scale(.5) rotate(-8deg); }
+    70% { opacity: 1; transform: scale(1.08) rotate(3deg); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
+  }
 }
 
 @media (prefers-contrast: more) {

@@ -310,7 +310,9 @@ export function isValidBackup(value: unknown): value is AppData {
     || !(data.settings.backgroundMode === undefined || isBackgroundMode(data.settings.backgroundMode))
     || !(data.settings.backgroundImageId === undefined || isBackgroundId(data.settings.backgroundImageId))
     || !(data.settings.backgroundIntervalSeconds === undefined
-      || isBackgroundInterval(data.settings.backgroundIntervalSeconds))) return false;
+      || isBackgroundInterval(data.settings.backgroundIntervalSeconds))
+    || !(data.settings.homeBackgroundFadeEnabled === undefined
+      || typeof data.settings.homeBackgroundFadeEnabled === "boolean")) return false;
 
   if (!isUnique(data.places, "id") || !isUnique(data.activities, "id")
     || !isUnique(data.records, "id") || !isUnique(data.stopwatchSessions, "id")

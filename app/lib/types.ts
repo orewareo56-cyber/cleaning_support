@@ -79,6 +79,7 @@ export type AppData = {
     backgroundMode?: BackgroundMode;
     backgroundImageId?: BackgroundId;
     backgroundIntervalSeconds?: number;
+    homeBackgroundFadeEnabled?: boolean;
   };
 };
 

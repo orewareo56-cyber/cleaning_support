@@ -16,12 +16,14 @@ export type BackgroundSettings = {
   backgroundMode: BackgroundMode;
   backgroundImageId: BackgroundId;
   backgroundIntervalSeconds: number;
+  homeBackgroundFadeEnabled: boolean;
 };
 
 export const DEFAULT_BACKGROUND_SETTINGS: BackgroundSettings = {
   backgroundMode: "none",
   backgroundImageId: "room-1908",
   backgroundIntervalSeconds: 7,
+  homeBackgroundFadeEnabled: true,
 };
 
 const BACKGROUND_IDS = new Set<string>(BACKGROUND_OPTIONS.map((option) => option.id));
@@ -49,5 +51,8 @@ export function resolveBackgroundSettings(settings: Partial<BackgroundSettings>)
     backgroundIntervalSeconds: isBackgroundInterval(settings.backgroundIntervalSeconds)
       ? settings.backgroundIntervalSeconds
       : DEFAULT_BACKGROUND_SETTINGS.backgroundIntervalSeconds,
+    homeBackgroundFadeEnabled: typeof settings.homeBackgroundFadeEnabled === "boolean"
+      ? settings.homeBackgroundFadeEnabled
+      : DEFAULT_BACKGROUND_SETTINGS.homeBackgroundFadeEnabled,
   };
 }

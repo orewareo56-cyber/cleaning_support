@@ -213,6 +213,7 @@ test("背景設定は旧データの省略を許容し、既定値と5〜10秒�
   delete legacyShape.settings.backgroundMode;
   delete legacyShape.settings.backgroundImageId;
   delete legacyShape.settings.backgroundIntervalSeconds;
+  delete legacyShape.settings.homeBackgroundFadeEnabled;
   assert.equal(isValidBackup(legacyShape), true);
   assert.deepEqual(resolveBackgroundSettings(legacyShape.settings), DEFAULT_BACKGROUND_SETTINGS);
 
@@ -228,6 +229,7 @@ test("背景設定は旧データの省略を許容し、既定値と5〜10秒�
     { ...valid.settings, backgroundIntervalSeconds: 4 },
     { ...valid.settings, backgroundIntervalSeconds: 11 },
     { ...valid.settings, backgroundIntervalSeconds: 7.5 },
+    { ...valid.settings, homeBackgroundFadeEnabled: "yes" },
   ]) {
     assert.equal(isValidBackup({ ...valid, settings }), false);
   }
