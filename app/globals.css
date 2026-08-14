@@ -25,6 +25,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, .file-button:
 .app-background-image { position: absolute; inset: -2px; background-position: center; background-size: cover; }
 .app-shell { position: relative; z-index: 1; width: min(100%, 720px); min-height: 100vh; min-height: 100dvh; margin: 0 auto; background: var(--paper); }
 .app-shell.has-background { background: rgb(247 245 239 / 42%); }
+.app-shell.home-background-reveal { animation: home-content-fade-in 3000ms cubic-bezier(.37, 0, .63, 1) both; }
+@keyframes home-content-fade-in { from { opacity: 0; } to { opacity: 1; } }
 .topbar { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: flex-start; min-height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left)); background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid rgb(33 49 44 / 7%); }
 .brand, .icon-button, .back-button { min-height: 44px; border: 0; background: transparent; cursor: pointer; }
 .brand { font-weight: 750; letter-spacing: .02em; }
@@ -57,6 +59,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, .file-button:
 .text-button { min-height: 44px; padding: 8px 5px; border: 0; background: transparent; color: var(--green); font-weight: 750; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 .start-panel .text-button { display: block; margin: 5px auto 0; color: #e2eee8; }
 button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.home-background-reveal { animation: none; }
+}
 
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; }
 .stats-grid article { min-width: 0; padding: 16px 12px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }

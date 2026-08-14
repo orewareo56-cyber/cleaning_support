@@ -38,6 +38,7 @@ type View = "home" | "history" | "badges" | "manage" | "settings" | "stopwatch" 
 type RecordDraft = { placeId: string; activityId: string; memo: string; sessionId: string | null; editingId: string | null };
 
 const emptyDraft: RecordDraft = { placeId: "", activityId: "", memo: "", sessionId: null, editingId: null };
+const HOME_BACKGROUND_FADE_MS = 3000;
 
 function formatJapaneseDate(localDate: string, options?: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("ja-JP", options ?? { month: "long", day: "numeric", weekday: "short" })
@@ -100,7 +101,10 @@ export function CleanupApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => dateInTimezone().slice(0, 7));
   const [masterKind, setMasterKind] = useState<"places" | "activities">("places");
+  const [revealingHomeBackground, setRevealingHomeBackground] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundRevealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundRevealActive = useRef(false);
 
   const announce = useCallback((message: string) => {
     setNotice(message);
@@ -108,10 +112,27 @@ export function CleanupApp() {
     noticeTimer.current = setTimeout(() => setNotice(null), 4500);
   }, []);
 
+  const showHomeBackground = useCallback((settings: AppData["settings"]) => {
+    if (document.visibilityState === "hidden") return;
+    const background = resolveBackgroundSettings(settings);
+    if (background.backgroundMode === "none") return;
+    if (backgroundRevealActive.current) return;
+    backgroundRevealActive.current = true;
+    setRevealingHomeBackground(true);
+    backgroundRevealTimer.current = setTimeout(() => {
+      backgroundRevealActive.current = false;
+      setRevealingHomeBackground(false);
+      backgroundRevealTimer.current = null;
+    }, HOME_BACKGROUND_FADE_MS);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     loadData().then((loaded) => {
-      if (mounted) setData(loaded);
+      if (mounted) {
+        showHomeBackground(loaded.settings);
+        setData(loaded);
+      }
     });
     if ("serviceWorker" in navigator) {
       const serviceWorkerUrl = new URL("sw.js", document.baseURI).pathname;
@@ -120,8 +141,27 @@ export function CleanupApp() {
     return () => {
       mounted = false;
       if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      if (backgroundRevealTimer.current) clearTimeout(backgroundRevealTimer.current);
     };
-  }, []);
+  }, [showHomeBackground]);
+
+  useEffect(() => {
+    if (!data) return undefined;
+    const showWhenReturning = () => {
+      if (view === "home") showHomeBackground(data.settings);
+    };
+    const showWhenVisible = () => {
+      if (document.visibilityState === "visible") showWhenReturning();
+    };
+    document.addEventListener("visibilitychange", showWhenVisible);
+    window.addEventListener("focus", showWhenReturning);
+    window.addEventListener("pageshow", showWhenReturning);
+    return () => {
+      document.removeEventListener("visibilitychange", showWhenVisible);
+      window.removeEventListener("focus", showWhenReturning);
+      window.removeEventListener("pageshow", showWhenReturning);
+    };
+  }, [data, showHomeBackground, view]);
 
   const commit = useCallback((next: AppData, success?: string) => {
     setData(next);
@@ -154,6 +194,7 @@ export function CleanupApp() {
 
   function navigate(next: View) {
     setSelectedDate(null);
+    if (next === "home") showHomeBackground(appData.settings);
     setView(next);
   }
 
@@ -233,7 +274,7 @@ export function CleanupApp() {
     }
     commit(next, grant ? "7日間の前進でリカバリー権を1つ獲得しました！" : "今日の一歩を記録しました");
     if (earned.length) setTimeout(() => announce(`バッジ「${BADGES.find((badge) => badge.id === earned[0])?.name}」を獲得しました！`), 300);
-    setView("home");
+    navigate("home");
     setDraft(emptyDraft);
   }
 
@@ -268,9 +309,9 @@ export function CleanupApp() {
   }
 
   const body = view === "stopwatch" ? (
-    <StopwatchView data={data} session={session} commit={commit} onRecord={openRecord} onBack={() => setView("home")} announce={announce} />
+    <StopwatchView data={data} session={session} commit={commit} onRecord={openRecord} onBack={() => navigate("home")} announce={announce} />
   ) : view === "record" ? (
-    <RecordView data={data} todayRecords={todayRecords} draft={draft} setDraft={setDraft} onSubmit={saveRecord} onCancel={() => setView("home")} commit={commit} />
+    <RecordView data={data} todayRecords={todayRecords} draft={draft} setDraft={setDraft} onSubmit={saveRecord} onCancel={() => navigate("home")} commit={commit} />
   ) : view === "history" ? (
     <HistoryView data={data} today={today} month={calendarMonth} setMonth={setCalendarMonth} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onEdit={openRecord} onDelete={deleteRecord} onRecovery={useRecovery} />
   ) : view === "badges" ? (
@@ -289,7 +330,11 @@ export function CleanupApp() {
         key={`${backgroundSettings.backgroundMode}-${backgroundSettings.backgroundImageId}`}
         settings={appData.settings}
       />
-      <div className={backgroundSettings.backgroundMode === "none" ? "app-shell" : "app-shell has-background"}>
+      <div className={[
+        "app-shell",
+        backgroundSettings.backgroundMode === "none" ? "" : "has-background",
+        revealingHomeBackground ? "home-background-reveal" : "",
+      ].filter(Boolean).join(" ")}>
       <header className="topbar">
         <button className="brand" onClick={() => navigate("home")} aria-label="ホームへ">
           <span aria-hidden="true">○</span> 片付けの一歩
